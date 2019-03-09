@@ -41,7 +41,8 @@ function setOptionSelectedStatus(optionEl, value) {
  *       <option value="option-1">Option 1</option>
  *       <option value="option-2">Option 2</option>
  *     </select><br>
- *     <span ng-if="myForm.testSelect.$error.unknownValue">Error: The current model doesn't match any option</span>
+ *     <span class="error" ng-if="myForm.testSelect.$error.unknownValue">
+ *       Error: The current model doesn't match any option</span><br>
  *
  *     <button ng-click="forceUnknownOption()">Force unknown option</button><br>
  *   </form>
@@ -90,11 +91,11 @@ function setOptionSelectedStatus(optionEl, value) {
  * <div ng-controller="ExampleController">
  *   <form name="myForm">
  *     <label for="testSelect"> Select: </label><br>
- *     <select name="testSelect" ng-model="selected" unknown-value-required>
+ *     <select name="testSelect" ng-model="selected" required unknown-value-required>
  *       <option value="option-1">Option 1</option>
  *       <option value="option-2">Option 2</option>
  *     </select><br>
- *     <span ng-if="myForm.testSelect.$error.required">Error: Please select a value</span><br>
+ *     <span class="error" ng-if="myForm.testSelect.$error.required">Error: Please select a value</span><br>
  *
  *     <button ng-click="forceUnknownOption()">Force unknown option</button><br>
  *   </form>
@@ -129,6 +130,22 @@ function setOptionSelectedStatus(optionEl, value) {
  *       }
  *     };
  *   });
+ * </file>
+ * <file name="protractor.js" type="protractor">
+ *  it('should show the error message when the unknown option is selected', function() {
+
+      var error = element(by.className('error'));
+
+      expect(error.getText()).toBe('Error: Please select a value');
+
+      element(by.cssContainingText('option', 'Option 1')).click();
+
+      expect(error.isPresent()).toBe(false);
+
+      element(by.tagName('button')).click();
+
+      expect(error.getText()).toBe('Error: Please select a value');
+    });
  * </file>
  *</example>
  *
@@ -366,7 +383,7 @@ var SelectController =
 
     if (optionAttrs.$attr.ngValue) {
       // The value attribute is set by ngValue
-      var oldVal, hashedVal = NaN;
+      var oldVal, hashedVal;
       optionAttrs.$observe('value', function valueAttributeObserveAction(newVal) {
 
         var removal;
@@ -539,18 +556,6 @@ var SelectController =
  * {@link guide/interpolation#-ngattr-for-binding-to-arbitrary-attributes ngAttr} directive.
  *
  *
- * @knownIssue
- *
- * In Firefox, the select model is only updated when the select element is blurred. For example,
- * when switching between options with the keyboard, the select model is only set to the
- * currently selected option when the select is blurred, e.g via tab key or clicking the mouse
- * outside the select.
- *
- * This is due to an ambiguity in the select element specification. See the
- * [issue on the Firefox bug tracker](https://bugzilla.mozilla.org/show_bug.cgi?id=126379)
- * for more information, and this
- * [Github comment for a workaround](https://github.com/angular/angular.js/issues/9134#issuecomment-130800488)
- *
  * @example
  * ### Simple `select` elements with static options
  *
@@ -600,6 +605,7 @@ var SelectController =
  * </file>
  *</example>
  *
+ * @example
  * ### Using `ngRepeat` to generate `select` options
  * <example name="select-ngrepeat" module="ngrepeatSelect">
  * <file name="index.html">
@@ -629,6 +635,7 @@ var SelectController =
  * </file>
  *</example>
  *
+ * @example
  * ### Using `ngValue` to bind the model to an array of objects
  * <example name="select-ngvalue" module="ngvalueSelect">
  * <file name="index.html">
@@ -661,6 +668,7 @@ var SelectController =
  * </file>
  *</example>
  *
+ * @example
  * ### Using `select` with `ngOptions` and setting a default value
  * See the {@link ngOptions ngOptions documentation} for more `ngOptions` usage examples.
  *
@@ -692,7 +700,7 @@ var SelectController =
  * </file>
  *</example>
  *
- *
+ * @example
  * ### Binding `select` to a non-string value via `ngModel` parsing / formatting
  *
  * <example name="select-with-non-string-options" module="nonStringSelect">

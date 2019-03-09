@@ -2,6 +2,8 @@
 
 /* global MockXhr: false */
 
+// The http specs run against the mocked httpBackend
+
 describe('$http', function() {
 
   var callback, mockedCookies;
@@ -9,21 +11,16 @@ describe('$http', function() {
     return Object.keys(params).join('_');
   };
 
-  beforeEach(function() {
-    callback = jasmine.createSpy('done');
-    mockedCookies = {};
-    module({
-      $$cookieReader: function() {
-        return mockedCookies;
-      }
-    });
-  });
-
-  beforeEach(module({
-    customParamSerializer: customParamSerializer
-  }));
   beforeEach(module(function($exceptionHandlerProvider) {
     $exceptionHandlerProvider.mode('log');
+
+    callback = jasmine.createSpy('done');
+    mockedCookies = {};
+  }));
+
+  beforeEach(module({
+    $$cookieReader: function() { return mockedCookies; },
+    customParamSerializer: customParamSerializer
   }));
 
   afterEach(inject(function($exceptionHandler, $httpBackend, $rootScope) {
@@ -35,7 +32,6 @@ describe('$http', function() {
       throw 'Unhandled exceptions trapped in $exceptionHandler!';
     }
 
-    $rootScope.$digest();
     $httpBackend.verifyNoOutstandingExpectation();
   }));
 
@@ -721,18 +717,6 @@ describe('$http', function() {
         $httpBackend.flush();
       });
 
-      it('should not set XSRF cookie for cross-domain requests', inject(function($browser) {
-        mockedCookies['XSRF-TOKEN'] =  'secret';
-        $browser.url('http://host.com/base');
-        $httpBackend.expect('GET', 'http://www.test.com/url', undefined, function(headers) {
-          return isUndefined(headers['X-XSRF-TOKEN']);
-        }).respond('');
-
-        $http({url: 'http://www.test.com/url', method: 'GET', headers: {}});
-        $httpBackend.flush();
-      }));
-
-
       it('should not send Content-Type header if request data/body is undefined', function() {
         $httpBackend.expect('POST', '/url', undefined, function(headers) {
           return !headers.hasOwnProperty('Content-Type');
@@ -763,32 +747,6 @@ describe('$http', function() {
 
         $httpBackend.flush();
       });
-
-      it('should set the XSRF cookie into a XSRF header', inject(function() {
-        function checkXSRF(secret, header) {
-          return function(headers) {
-            return headers[header || 'X-XSRF-TOKEN'] === secret;
-          };
-        }
-
-        mockedCookies['XSRF-TOKEN'] =  'secret';
-        mockedCookies['aCookie'] = 'secret2';
-        $httpBackend.expect('GET', '/url', undefined, checkXSRF('secret')).respond('');
-        $httpBackend.expect('POST', '/url', undefined, checkXSRF('secret')).respond('');
-        $httpBackend.expect('PUT', '/url', undefined, checkXSRF('secret')).respond('');
-        $httpBackend.expect('DELETE', '/url', undefined, checkXSRF('secret')).respond('');
-        $httpBackend.expect('GET', '/url', undefined, checkXSRF('secret', 'aHeader')).respond('');
-        $httpBackend.expect('GET', '/url', undefined, checkXSRF('secret2')).respond('');
-
-        $http({url: '/url', method: 'GET'});
-        $http({url: '/url', method: 'POST', headers: {'S-ome': 'Header'}});
-        $http({url: '/url', method: 'PUT', headers: {'Another': 'Header'}});
-        $http({url: '/url', method: 'DELETE', headers: {}});
-        $http({url: '/url', method: 'GET', xsrfHeaderName: 'aHeader'});
-        $http({url: '/url', method: 'GET', xsrfCookieName: 'aCookie'});
-
-        $httpBackend.flush();
-      }));
 
       it('should send execute result if header value is function', function() {
         var headerConfig = {'Accept': function() { return 'Rewritten'; }};
@@ -839,20 +797,6 @@ describe('$http', function() {
 
         expect(config.foo).toBeUndefined();
       });
-
-      it('should check the cache before checking the XSRF cookie', inject(function($cacheFactory) {
-        var testCache = $cacheFactory('testCache');
-
-        spyOn(testCache, 'get').and.callFake(function() {
-          mockedCookies['XSRF-TOKEN'] = 'foo';
-        });
-
-        $httpBackend.expect('GET', '/url', undefined, function(headers) {
-          return headers['X-XSRF-TOKEN'] === 'foo';
-        }).respond('');
-        $http({url: '/url', method: 'GET', cache: testCache});
-        $httpBackend.flush();
-      }));
     });
 
 
@@ -979,6 +923,14 @@ describe('$http', function() {
         $http({method: 'JSONP', url: $sce.trustAsResourceUrl('/url'), params: {a: 'b'}});
       });
 
+      it('should error if the URL contains more than one `?` query indicator', function() {
+        var error;
+        $http({ method: 'JSONP', url: $sce.trustAsResourceUrl('http://example.org/path?a=b?c=d')})
+            .catch(function(e) { error = e; });
+        $rootScope.$digest();
+        expect(error).toEqualMinErr('$http', 'badjsonp');
+      });
+
       it('should error if the URL contains a JSON_CALLBACK parameter', function() {
         var error;
         $http({ method: 'JSONP', url: $sce.trustAsResourceUrl('http://example.org/path?callback=JSON_CALLBACK')})
@@ -987,7 +939,19 @@ describe('$http', function() {
         expect(error).toEqualMinErr('$http', 'badjsonp');
 
         error = undefined;
+        $http({ method: 'JSONP', url: $sce.trustAsResourceUrl('http://example.org/path?callback=JSON_C%41LLBACK')})
+            .catch(function(e) { error = e; });
+        $rootScope.$digest();
+        expect(error).toEqualMinErr('$http', 'badjsonp');
+
+        error = undefined;
         $http({ method: 'JSONP', url: $sce.trustAsResourceUrl('http://example.org/path?other=JSON_CALLBACK')})
+            .catch(function(e) { error = e; });
+        $rootScope.$digest();
+        expect(error).toEqualMinErr('$http', 'badjsonp');
+
+        error = undefined;
+        $http({ method: 'JSONP', url: $sce.trustAsResourceUrl('http://example.org/path?other=JSON_C%41LLBACK')})
             .catch(function(e) { error = e; });
         $rootScope.$digest();
         expect(error).toEqualMinErr('$http', 'badjsonp');
@@ -1007,6 +971,23 @@ describe('$http', function() {
         expect(error).toEqualMinErr('$http', 'badjsonp');
       });
 
+      it('should allow encoded params that look like they contain the value JSON_CALLBACK or the configured callback key', function() {
+        var error;
+        error = undefined;
+        $httpBackend.expect('JSONP', 'http://example.org/path?other=JSON_C%2541LLBACK&callback=JSON_CALLBACK').respond('');
+        $http({ method: 'JSONP', url: $sce.trustAsResourceUrl('http://example.org/path'), params: {other: 'JSON_C%41LLBACK'}})
+            .catch(function(e) { error = e; });
+        $rootScope.$digest();
+        expect(error).toBeUndefined();
+
+        error = undefined;
+        $httpBackend.expect('JSONP', 'http://example.org/path?c%2561llback=evilThing&callback=JSON_CALLBACK').respond('');
+        $http({ method: 'JSONP', url: $sce.trustAsResourceUrl('http://example.org/path'), params: {'c%61llback': 'evilThing'}})
+            .catch(function(e) { error = e; });
+        $rootScope.$digest();
+        expect(error).toBeUndefined();
+      });
+
       it('should error if there is already a param matching the jsonpCallbackParam key', function() {
         var error;
         $http({ method: 'JSONP', url: $sce.trustAsResourceUrl('http://example.org/path'), params: {callback: 'evilThing'}})
@@ -1015,7 +996,19 @@ describe('$http', function() {
         expect(error).toEqualMinErr('$http', 'badjsonp');
 
         error = undefined;
+        $http({ method: 'JSONP', url: $sce.trustAsResourceUrl('http://example.org/path?c%61llback=evilThing')})
+            .catch(function(e) { error = e; });
+        $rootScope.$digest();
+        expect(error).toEqualMinErr('$http', 'badjsonp');
+
+        error = undefined;
         $http({ method: 'JSONP', jsonpCallbackParam: 'cb', url: $sce.trustAsResourceUrl('http://example.org/path'), params: {cb: 'evilThing'}})
+            .catch(function(e) { error = e; });
+        $rootScope.$digest();
+        expect(error).toEqualMinErr('$http', 'badjsonp');
+
+        error = undefined;
+        $http({ method: 'JSONP', jsonpCallbackParam: 'cb', url: $sce.trustAsResourceUrl('http://example.org/path?c%62=evilThing')})
             .catch(function(e) { error = e; });
         $rootScope.$digest();
         expect(error).toEqualMinErr('$http', 'badjsonp');
@@ -1858,7 +1851,7 @@ describe('$http', function() {
             function(response) {
               expect(response.data).toBeUndefined();
               expect(response.status).toBe(-1);
-              expect(response.xhrStatus).toBe('timeout');
+              expect(response.xhrStatus).toBe('abort');
               expect(response.headers()).toEqual(Object.create(null));
               expect(response.config.url).toBe('/some');
               callback();
@@ -1874,17 +1867,45 @@ describe('$http', function() {
       }));
 
 
-      it('should reject promise when timeout promise resolves', inject(function($timeout) {
+      it('should timeout request when numerical timeout is exceeded', inject(function($timeout) {
         var onFulfilled = jasmine.createSpy('onFulfilled');
-        var onRejected = jasmine.createSpy('onRejected');
+        var onRejected = jasmine.createSpy('onRejected').and.callFake(function(response) {
+          expect(response.xhrStatus).toBe('timeout');
+        });
+
         $httpBackend.expect('GET', '/some').respond(200);
 
-        $http({method: 'GET', url: '/some', timeout: $timeout(noop, 10)}).then(onFulfilled, onRejected);
+        $http({
+          method: 'GET',
+          url: '/some',
+          timeout: 10
+        }).then(onFulfilled, onRejected);
 
         $timeout.flush(100);
 
         expect(onFulfilled).not.toHaveBeenCalled();
-        expect(onRejected).toHaveBeenCalledOnce();
+        expect(onRejected).toHaveBeenCalled();
+      }));
+
+
+      it('should reject promise when timeout promise resolves', inject(function($timeout) {
+        var onFulfilled = jasmine.createSpy('onFulfilled');
+        var onRejected = jasmine.createSpy('onRejected').and.callFake(function(response) {
+          expect(response.xhrStatus).toBe('timeout');
+        });
+
+        $httpBackend.expect('GET', '/some').respond(200);
+
+        $http({
+          method: 'GET',
+          url: '/some',
+          timeout: $timeout(noop, 10)
+        }).then(onFulfilled, onRejected);
+
+        $timeout.flush(100);
+
+        expect(onFulfilled).not.toHaveBeenCalled();
+        expect(onRejected).toHaveBeenCalled();
       }));
     });
 
@@ -1981,7 +2002,7 @@ describe('$http', function() {
       it('should immediately call `$browser.$$incOutstandingRequestCount()`', function() {
         expect(incOutstandingRequestCountSpy).not.toHaveBeenCalled();
         $http.get('');
-        expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnce();
+        expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnceWith('$http');
       });
 
 
@@ -1991,7 +2012,7 @@ describe('$http', function() {
         $http.get('');
         expect(completeOutstandingRequestSpy).not.toHaveBeenCalled();
         $httpBackend.flush();
-        expect(completeOutstandingRequestSpy).toHaveBeenCalledOnce();
+        expect(completeOutstandingRequestSpy).toHaveBeenCalledOnceWith(noop, '$http');
       });
 
 
@@ -2001,7 +2022,7 @@ describe('$http', function() {
         $http.get('').catch(noop);
         expect(completeOutstandingRequestSpy).not.toHaveBeenCalled();
         $httpBackend.flush();
-        expect(completeOutstandingRequestSpy).toHaveBeenCalledOnce();
+        expect(completeOutstandingRequestSpy).toHaveBeenCalledOnceWith(noop, '$http');
       });
 
 
@@ -2012,13 +2033,13 @@ describe('$http', function() {
 
           $http.get('', {transformRequest: function() { throw new Error(); }}).catch(noop);
 
-          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnce();
+          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnceWith('$http');
           expect(completeOutstandingRequestSpy).not.toHaveBeenCalled();
 
           $rootScope.$digest();
 
-          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnce();
-          expect(completeOutstandingRequestSpy).toHaveBeenCalledOnce();
+          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnceWith('$http');
+          expect(completeOutstandingRequestSpy).toHaveBeenCalledOnceWith(noop, '$http');
         }
       );
 
@@ -2031,13 +2052,13 @@ describe('$http', function() {
           $httpBackend.when('GET').respond(200);
           $http.get('', {transformResponse: function() { throw new Error(); }}).catch(noop);
 
-          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnce();
+          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnceWith('$http');
           expect(completeOutstandingRequestSpy).not.toHaveBeenCalled();
 
           $httpBackend.flush();
 
-          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnce();
-          expect(completeOutstandingRequestSpy).toHaveBeenCalledOnce();
+          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnceWith('$http');
+          expect(completeOutstandingRequestSpy).toHaveBeenCalledOnceWith(noop, '$http');
         }
       );
     });
@@ -2091,7 +2112,7 @@ describe('$http', function() {
 
           expect(reqInterceptorFulfilled).toBe(false);
           expect(resInterceptorFulfilled).toBe(false);
-          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnce();
+          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnceWith('$http');
           expect(completeOutstandingRequestSpy).not.toHaveBeenCalled();
 
           reqInterceptorDeferred.resolve();
@@ -2099,7 +2120,7 @@ describe('$http', function() {
 
           expect(reqInterceptorFulfilled).toBe(true);
           expect(resInterceptorFulfilled).toBe(false);
-          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnce();
+          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnceWith('$http');
           expect(completeOutstandingRequestSpy).not.toHaveBeenCalled();
 
           resInterceptorDeferred.resolve();
@@ -2107,8 +2128,8 @@ describe('$http', function() {
 
           expect(reqInterceptorFulfilled).toBe(true);
           expect(resInterceptorFulfilled).toBe(true);
-          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnce();
-          expect(completeOutstandingRequestSpy).toHaveBeenCalledOnce();
+          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnceWith('$http');
+          expect(completeOutstandingRequestSpy).toHaveBeenCalledOnceWith(noop, '$http');
         }
       );
 
@@ -2123,15 +2144,15 @@ describe('$http', function() {
           $rootScope.$digest();
 
           expect(reqInterceptorFulfilled).toBe(false);
-          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnce();
+          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnceWith('$http');
           expect(completeOutstandingRequestSpy).not.toHaveBeenCalled();
 
           reqInterceptorDeferred.reject();
           $rootScope.$digest();
 
           expect(reqInterceptorFulfilled).toBe(true);
-          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnce();
-          expect(completeOutstandingRequestSpy).toHaveBeenCalledOnce();
+          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnceWith('$http');
+          expect(completeOutstandingRequestSpy).toHaveBeenCalledOnceWith(noop, '$http');
         }
       );
 
@@ -2148,7 +2169,7 @@ describe('$http', function() {
 
           expect(reqInterceptorFulfilled).toBe(false);
           expect(resInterceptorFulfilled).toBe(false);
-          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnce();
+          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnceWith('$http');
           expect(completeOutstandingRequestSpy).not.toHaveBeenCalled();
 
           reqInterceptorDeferred.resolve();
@@ -2156,7 +2177,7 @@ describe('$http', function() {
 
           expect(reqInterceptorFulfilled).toBe(true);
           expect(resInterceptorFulfilled).toBe(false);
-          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnce();
+          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnceWith('$http');
           expect(completeOutstandingRequestSpy).not.toHaveBeenCalled();
 
           resInterceptorDeferred.reject();
@@ -2164,8 +2185,8 @@ describe('$http', function() {
 
           expect(reqInterceptorFulfilled).toBe(true);
           expect(resInterceptorFulfilled).toBe(true);
-          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnce();
-          expect(completeOutstandingRequestSpy).toHaveBeenCalledOnce();
+          expect(incOutstandingRequestCountSpy).toHaveBeenCalledOnceWith('$http');
+          expect(completeOutstandingRequestSpy).toHaveBeenCalledOnceWith(noop, '$http');
         }
       );
     });
@@ -2184,6 +2205,148 @@ describe('$http', function() {
             spyOn($browser, '$$completeOutstandingRequest').and.callThrough();
       });
     }
+  });
+
+
+  describe('XSRF', function() {
+    var $http;
+    var $httpBackend;
+
+    beforeEach(module(function($httpProvider) {
+      $httpProvider.xsrfWhitelistedOrigins.push(
+          'https://whitelisted.example.com',
+          'https://whitelisted2.example.com:1337/ignored/path');
+    }));
+
+    beforeEach(inject(function(_$http_, _$httpBackend_) {
+      $http = _$http_;
+      $httpBackend = _$httpBackend_;
+    }));
+
+
+    it('should set the XSRF cookie into an XSRF header', function() {
+      function checkXsrf(secret, header) {
+        return function checkHeaders(headers) {
+          return headers[header || 'X-XSRF-TOKEN'] === secret;
+        };
+      }
+
+      mockedCookies['XSRF-TOKEN'] = 'secret';
+      mockedCookies['aCookie'] = 'secret2';
+      $httpBackend.expect('GET',    '/url', null, checkXsrf('secret')).respond(null);
+      $httpBackend.expect('POST',   '/url', null, checkXsrf('secret')).respond(null);
+      $httpBackend.expect('PUT',    '/url', null, checkXsrf('secret')).respond(null);
+      $httpBackend.expect('DELETE', '/url', null, checkXsrf('secret')).respond(null);
+      $httpBackend.expect('GET',    '/url', null, checkXsrf('secret', 'aHeader')).respond(null);
+      $httpBackend.expect('GET',    '/url', null, checkXsrf('secret2')).respond(null);
+
+      $http({method: 'GET',    url: '/url'});
+      $http({method: 'POST',   url: '/url', headers: {'S-ome': 'Header'}});
+      $http({method: 'PUT',    url: '/url', headers: {'Another': 'Header'}});
+      $http({method: 'DELETE', url: '/url', headers: {}});
+      $http({method: 'GET',    url: '/url', xsrfHeaderName: 'aHeader'});
+      $http({method: 'GET',    url: '/url', xsrfCookieName: 'aCookie'});
+
+      $httpBackend.flush();
+    });
+
+
+    it('should support setting a default XSRF cookie/header name', function() {
+      $http.defaults.xsrfCookieName = 'aCookie';
+      $http.defaults.xsrfHeaderName = 'aHeader';
+
+      function checkHeaders(headers) {
+        return headers.aHeader === 'secret';
+      }
+
+      mockedCookies.aCookie = 'secret';
+      $httpBackend.expect('GET', '/url', null, checkHeaders).respond(null);
+
+      $http.get('/url');
+
+      $httpBackend.flush();
+    });
+
+
+    it('should support overriding the default XSRF cookie/header name per request', function() {
+      $http.defaults.xsrfCookieName = 'aCookie';
+      $http.defaults.xsrfHeaderName = 'aHeader';
+
+      function checkHeaders(headers) {
+        return headers.anotherHeader === 'anotherSecret';
+      }
+
+      mockedCookies.anotherCookie = 'anotherSecret';
+      $httpBackend.expect('GET', '/url', null, checkHeaders).respond(null);
+
+      $http.get('/url', {
+        xsrfCookieName: 'anotherCookie',
+        xsrfHeaderName: 'anotherHeader'
+      });
+
+      $httpBackend.flush();
+    });
+
+
+    it('should check the cache before checking the XSRF cookie', inject(function($cacheFactory) {
+      function checkHeaders(headers) {
+        return headers['X-XSRF-TOKEN'] === 'foo';
+      }
+      function setCookie() {
+        mockedCookies['XSRF-TOKEN'] = 'foo';
+      }
+
+      var testCache = $cacheFactory('testCache');
+      spyOn(testCache, 'get').and.callFake(setCookie);
+
+      $httpBackend.expect('GET', '/url', null, checkHeaders).respond(null);
+      $http.get('/url', {cache: testCache});
+
+      $httpBackend.flush();
+    }));
+
+
+    it('should not set an XSRF header for cross-domain requests', function() {
+      function checkHeaders(headers) {
+        return isUndefined(headers['X-XSRF-TOKEN']);
+      }
+      var requestUrls = [
+        'https://api.example.com/path',
+        'http://whitelisted.example.com',
+        'https://whitelisted2.example.com:1338'
+      ];
+
+      mockedCookies['XSRF-TOKEN'] = 'secret';
+
+      requestUrls.forEach(function(url) {
+        $httpBackend.expect('GET', url, null, checkHeaders).respond(null);
+        $http.get(url);
+        $httpBackend.flush();
+      });
+    });
+
+
+    it('should set an XSRF header for cross-domain requests to whitelisted origins',
+      inject(function($browser) {
+        function checkHeaders(headers) {
+          return headers['X-XSRF-TOKEN'] === 'secret';
+        }
+        var currentUrl = 'https://example.com/path';
+        var requestUrls = [
+          'https://whitelisted.example.com/path',
+          'https://whitelisted2.example.com:1337/path'
+        ];
+
+        $browser.url(currentUrl);
+        mockedCookies['XSRF-TOKEN'] = 'secret';
+
+        requestUrls.forEach(function(url) {
+          $httpBackend.expect('GET', url, null, checkHeaders).respond(null);
+          $http.get(url);
+          $httpBackend.flush();
+        });
+      })
+    );
   });
 
 
@@ -2404,7 +2567,6 @@ describe('$http param serializers', function() {
          'a%5B%5D=b&a%5B%5D=c&d%5B0%5D%5Be%5D=f&d%5B0%5D%5Bg%5D=h&d%5B%5D=i&d%5B2%5D%5Bj%5D=k');
          //a[]=b&a[]=c&d[0][e]=f&d[0][g]=h&d[]=i&d[2][j]=k
     });
-
     it('should serialize `null` and `undefined` elements as empty', function() {
       expect(jqrSer({items:['foo', 'bar', null, undefined, 'baz'], x: null, y: undefined})).toEqual(
          'items%5B%5D=foo&items%5B%5D=bar&items%5B%5D=&items%5B%5D=&items%5B%5D=baz&x=&y=');

@@ -4,6 +4,7 @@ var serveFavicon = require('serve-favicon');
 var serveStatic = require('serve-static');
 var serveIndex = require('serve-index');
 var files = require('./angularFiles').files;
+var mergeFilesFor = require('./angularFiles').mergeFilesFor;
 var util = require('./lib/grunt/utils.js');
 var versionInfo = require('./lib/versions/version-info');
 var path = require('path');
@@ -12,6 +13,8 @@ var e2e = require('./test/e2e/tools');
 var semver = require('semver');
 var exec = require('shelljs').exec;
 var pkg = require(__dirname + '/package.json');
+
+var docsScriptFolder = 'scripts/docs.angularjs.org-firebase';
 
 // Node.js version checks
 if (!semver.satisfies(process.version, pkg.engines.node)) {
@@ -28,7 +31,7 @@ if (!semver.satisfies(currentYarnVersion, expectedYarnVersion)) {
 }
 
 // Grunt CLI version checks
-var expectedGruntVersion = pkg.engines.grunt;
+var expectedGruntVersion = pkg.engines['grunt-cli'];
 var currentGruntVersions = exec('grunt --version', {silent: true}).stdout;
 var match = /^grunt-cli v(.+)$/m.exec(currentGruntVersions);
 if (!match) {
@@ -63,7 +66,11 @@ module.exports = function(grunt) {
   NG_VERSION.cdn = versionInfo.cdnVersion;
   var dist = 'angular-' + NG_VERSION.full;
 
-  var deployVersion = NG_VERSION.isSnapshot ? 'snapshot' : NG_VERSION.full;
+  var deployVersion = NG_VERSION.full;
+
+  if (NG_VERSION.isSnapshot) {
+    deployVersion = NG_VERSION.distTag === 'latest' ? 'snapshot-stable' : 'snapshot';
+  }
 
   if (versionInfo.cdnVersion == null) {
     throw new Error('Unable to read CDN version, are you offline or has the CDN not been properly pushed?\n' +
@@ -135,7 +142,9 @@ module.exports = function(grunt) {
       'jquery-2.2': 'karma-jquery-2.2.conf.js',
       'jquery-2.1': 'karma-jquery-2.1.conf.js',
       docs: 'karma-docs.conf.js',
-      modules: 'karma-modules.conf.js'
+      modules: 'karma-modules.conf.js',
+      'modules-ngAnimate': 'karma-modules-ngAnimate.conf.js',
+      'modules-ngMock': 'karma-modules-ngMock.conf.js'
     },
 
 
@@ -158,7 +167,12 @@ module.exports = function(grunt) {
 
     clean: {
       build: ['build'],
-      tmp: ['tmp']
+      tmp: ['tmp'],
+      deploy: [
+        'deploy/docs',
+        'deploy/code',
+        docsScriptFolder + '/functions/html'
+      ]
     },
 
     eslint: {
@@ -169,6 +183,7 @@ module.exports = function(grunt) {
           'docs/**/*.js',
           'lib/**/*.js',
           'scripts/**/*.js',
+          '!scripts/*/*/node_modules/**',
           'src/**/*.js',
           'test/**/*.js',
           'i18n/**/*.js',
@@ -182,16 +197,6 @@ module.exports = function(grunt) {
     },
 
     build: {
-      scenario: {
-        dest: 'build/angular-scenario.js',
-        src: [
-          'bower_components/jquery/dist/jquery.js',
-          util.wrap([files['angularSrc'], files['angularScenario']], 'ngScenario/angular')
-        ],
-        styles: {
-          css: ['css/angular.css', 'css/angular-scenario.css']
-        }
-      },
       angular: {
         dest: 'build/angular.js',
         src: util.wrap([files['angularSrc']], 'angular'),
@@ -209,6 +214,12 @@ module.exports = function(grunt) {
         dest: 'build/angular-touch.js',
         src: util.wrap(files['angularModules']['ngTouch'], 'module')
       },
+      touchModuleTestBundle: {
+        dest: 'build/test-bundles/angular-touch.js',
+        prefix: 'src/module.prefix',
+        src: mergeFilesFor('karmaModules-ngTouch'),
+        suffix: 'src/module.suffix'
+      },
       mocks: {
         dest: 'build/angular-mocks.js',
         src: util.wrap(files['angularModules']['ngMock'], 'module'),
@@ -218,17 +229,41 @@ module.exports = function(grunt) {
         dest: 'build/angular-sanitize.js',
         src: util.wrap(files['angularModules']['ngSanitize'], 'module')
       },
+      sanitizeModuleTestBundle: {
+        dest: 'build/test-bundles/angular-sanitize.js',
+        prefix: 'src/module.prefix',
+        src: mergeFilesFor('karmaModules-ngSanitize'),
+        suffix: 'src/module.suffix'
+      },
       resource: {
         dest: 'build/angular-resource.js',
         src: util.wrap(files['angularModules']['ngResource'], 'module')
+      },
+      resourceModuleTestBundle: {
+        dest: 'build/test-bundles/angular-resource.js',
+        prefix: 'src/module.prefix',
+        src: mergeFilesFor('karmaModules-ngResource'),
+        suffix: 'src/module.suffix'
       },
       messageformat: {
         dest: 'build/angular-message-format.js',
         src: util.wrap(files['angularModules']['ngMessageFormat'], 'module')
       },
+      messageformatModuleTestBundle: {
+        dest: 'build/test-bundles/angular-message-format.js',
+        prefix: 'src/module.prefix',
+        src: mergeFilesFor('karmaModules-ngMessageFormat'),
+        suffix: 'src/module.suffix'
+      },
       messages: {
         dest: 'build/angular-messages.js',
         src: util.wrap(files['angularModules']['ngMessages'], 'module')
+      },
+      messagesModuleTestBundle: {
+        dest: 'build/test-bundles/angular-messages.js',
+        prefix: 'src/module.prefix',
+        src: mergeFilesFor('karmaModules-ngMessages'),
+        suffix: 'src/module.suffix'
       },
       animate: {
         dest: 'build/angular-animate.js',
@@ -238,13 +273,31 @@ module.exports = function(grunt) {
         dest: 'build/angular-route.js',
         src: util.wrap(files['angularModules']['ngRoute'], 'module')
       },
+      routeModuleTestBundle: {
+        dest: 'build/test-bundles/angular-route.js',
+        prefix: 'src/module.prefix',
+        src: mergeFilesFor('karmaModules-ngRoute'),
+        suffix: 'src/module.suffix'
+      },
       cookies: {
         dest: 'build/angular-cookies.js',
         src: util.wrap(files['angularModules']['ngCookies'], 'module')
       },
+      cookiesModuleTestBundle: {
+        dest: 'build/test-bundles/angular-cookies.js',
+        prefix: 'src/module.prefix',
+        src: mergeFilesFor('karmaModules-ngCookies'),
+        suffix: 'src/module.suffix'
+      },
       aria: {
         dest: 'build/angular-aria.js',
         src: util.wrap(files['angularModules']['ngAria'], 'module')
+      },
+      ariaModuleTestBundle: {
+        dest: 'build/test-bundles/angular-aria.js',
+        prefix: 'src/module.prefix',
+        src: mergeFilesFor('karmaModules-ngAria'),
+        suffix: 'src/module.suffix'
       },
       parseext: {
         dest: 'build/angular-parse-ext.js',
@@ -277,9 +330,7 @@ module.exports = function(grunt) {
       files: [
         'src/**/*.js',
         'test/**/*.js',
-        '!test/ngScenario/DescribeSpec.js',
         '!src/ng/directive/attrs.js', // legitimate xit here
-        '!src/ngScenario/**/*.js',
         '!test/helpers/privateMocks*.js'
       ],
       options: {
@@ -311,7 +362,54 @@ module.exports = function(grunt) {
     copy: {
       i18n: {
         files: [
-          { src: 'src/ngLocale/**', dest: 'build/i18n/', expand: true, flatten: true }
+          {
+            src: 'src/ngLocale/**',
+            dest: 'build/i18n/',
+            expand: true,
+            flatten: true
+          }
+        ]
+      },
+      deployFirebaseCode: {
+        files: [
+          // copy files that are not handled by compress
+          {
+            cwd: 'build',
+            src: '**/*.{zip,jpg,jpeg,png}',
+            dest: 'deploy/code/' + deployVersion + '/',
+            expand: true
+          }
+        ]
+      },
+      deployFirebaseDocs: {
+        files: [
+          // The source files are needed by the embedded examples in the docs app.
+          {
+            src: ['build/angular*.{js,js.map,min.js}', 'build/sitemap.xml'],
+            dest: 'deploy/docs/',
+            expand: true,
+            flatten: true
+          },
+          {
+            cwd: 'build/docs',
+            src: ['**', '!ptore2e/**', '!index*.html'],
+            dest: 'deploy/docs/',
+            expand: true
+          },
+          {
+            src: 'build/docs/index-production.html',
+            dest: 'deploy/docs/index.html'
+          },
+          {
+            src: 'build/docs/index-production.html',
+            dest: docsScriptFolder + '/functions/content/index.html'
+          },
+          {
+            cwd: 'build/docs',
+            src: 'partials/**',
+            dest: docsScriptFolder + '/functions/content',
+            expand: true
+          }
         ]
       }
     },
@@ -326,14 +424,15 @@ module.exports = function(grunt) {
         dot: true,
         dest: dist + '/'
       },
-      firebaseCodeDeploy: {
+      deployFirebaseCode: {
         options: {
           mode: 'gzip'
         },
-        src: ['**'],
+        // Already compressed files should not be compressed again
+        src: ['**', '!**/*.{zip,png,jpeg,jpg}'],
         cwd: 'build',
         expand: true,
-        dest: 'upload/' + deployVersion + '/'
+        dest: 'deploy/code/' + deployVersion + '/'
       }
     },
 
@@ -382,7 +481,9 @@ module.exports = function(grunt) {
   grunt.registerTask('test:jquery-2.1', 'Run the jQuery 2.1 unit tests with Karma', ['tests:jquery-2.1']);
   grunt.registerTask('test:modules', 'Run the Karma module tests with Karma', [
     'build',
-    'tests:modules'
+    'tests:modules',
+    'tests:modules-ngAnimate',
+    'tests:modules-ngMock'
   ]);
   grunt.registerTask('test:docs', 'Run the doc-page tests with Karma', ['package', 'tests:docs']);
   grunt.registerTask('test:unit', 'Run unit, jQuery and Karma module tests with Karma', [
@@ -412,14 +513,12 @@ module.exports = function(grunt) {
     'shell:promises-aplus-tests'
   ]);
   grunt.registerTask('minify', [
-    'bower',
     'clean',
     'build',
     'minall'
   ]);
   grunt.registerTask('webserver', ['connect:devserver']);
   grunt.registerTask('package', [
-    'bower',
     'validate-angular-files',
     'clean',
     'buildall',
@@ -427,13 +526,20 @@ module.exports = function(grunt) {
     'collect-errors',
     'write',
     'docs',
-    'copy',
+    'copy:i18n',
     'compress:build'
   ]);
   grunt.registerTask('ci-checks', [
     'ddescribe-iit',
     'merge-conflict',
     'eslint'
+  ]);
+  grunt.registerTask('prepareDeploy', [
+    'package',
+    'compress:deployFirebaseCode',
+    'copy:deployFirebaseCode',
+    'firebaseDocsJsonForTravis',
+    'copy:deployFirebaseDocs'
   ]);
   grunt.registerTask('default', ['package']);
 };

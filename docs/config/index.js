@@ -22,6 +22,7 @@ module.exports = new Package('angularjs', [
 .factory(require('./services/deployments/debug'))
 .factory(require('./services/deployments/default'))
 .factory(require('./services/deployments/jquery'))
+.factory(require('./services/deployments/test'))
 .factory(require('./services/deployments/production'))
 
 .factory(require('./inline-tag-defs/type'))
@@ -31,6 +32,7 @@ module.exports = new Package('angularjs', [
 .processor(require('./processors/keywords'))
 .processor(require('./processors/pages-data'))
 .processor(require('./processors/versions-data'))
+.processor(require('./processors/sitemap'))
 
 
 .config(function(dgeni, log, readFilesProcessor, writeFilesProcessor) {
@@ -112,10 +114,6 @@ module.exports = new Package('angularjs', [
     docTypes: ['indexPage'],
     pathTemplate: '.',
     outputPathTemplate: '${id}.html'
-  }, {
-    docTypes: ['deploymentData'],
-    pathTemplate: '.',
-    outputPathTemplate: 'js/${id}.js'
   });
 
   computePathsProcessor.pathTemplates.push({
@@ -129,14 +127,8 @@ module.exports = new Package('angularjs', [
     outputPathTemplate: 'partials/${area}/${moduleName}/${groupType}.html'
   });
 
-  computePathsProcessor.pathTemplates.push({
-    docTypes: ['example'],
-    pathTemplate: 'examples/${example.id}',
-    outputPathTemplate: 'examples/${example.id}/index${deploymentQualifier}.html'
-  });
-
   computeIdsProcessor.idTemplates.push({
-    docTypes: ['overview', 'tutorial', 'e2e-test', 'indexPage', 'deploymentData'],
+    docTypes: ['overview', 'tutorial', 'e2e-test', 'indexPage'],
     getId: function(doc) { return doc.fileInfo.baseName; },
     getAliases: function(doc) { return [doc.id]; }
   });
@@ -156,6 +148,7 @@ module.exports = new Package('angularjs', [
 
 .config(function(checkAnchorLinksProcessor) {
   checkAnchorLinksProcessor.base = '/';
+  checkAnchorLinksProcessor.errorOnUnmatchedLinks = true;
   // We are only interested in docs that have an area (i.e. they are pages)
   checkAnchorLinksProcessor.checkDoc = function(doc) { return doc.area; };
 })
@@ -166,12 +159,14 @@ module.exports = new Package('angularjs', [
   generateProtractorTestsProcessor,
   generateExamplesProcessor,
   debugDeployment, defaultDeployment,
-  jqueryDeployment, productionDeployment) {
+  jqueryDeployment, testDeployment,
+  productionDeployment) {
 
   generateIndexPagesProcessor.deployments = [
     debugDeployment,
     defaultDeployment,
     jqueryDeployment,
+    testDeployment,
     productionDeployment
   ];
 

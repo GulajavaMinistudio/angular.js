@@ -6,11 +6,12 @@ const path = require('path');
 
 const gcsBucketId = `${process.env.GCLOUD_PROJECT}.appspot.com`;
 
-const BROWSER_CACHE_DURATION = 300;
-const CDN_CACHE_DURATION = 600;
+const BROWSER_CACHE_DURATION = 60 * 10;
+const CDN_CACHE_DURATION = 60 * 60 * 12;
 
 function sendStoredFile(request, response) {
-  let filePathSegments = request.path.split('/').filter((segment) => {
+  const requestPath = request.path || '/';
+  let filePathSegments = requestPath.split('/').filter((segment) => {
     // Remove empty leading or trailing path parts
     return segment !== '';
   });
@@ -31,7 +32,7 @@ function sendStoredFile(request, response) {
   }
 
   if (!fileName) {
-    //Root
+    // Root
     return getDirectoryListing('/').catch(sendErrorResponse);
   }
 
@@ -61,12 +62,8 @@ function sendStoredFile(request, response) {
       return new Promise((resolve, reject) => {
 
         const readStream = file.createReadStream()
-          .on('error', error => {
-            reject(error);
-          })
-          .on('response', () => {
-            resolve(response);
-          });
+          .on('error', reject)
+          .on('finish', resolve);
 
         response
           .status(200)
@@ -75,13 +72,17 @@ function sendStoredFile(request, response) {
             'Cache-Control': `public, max-age=${BROWSER_CACHE_DURATION}, s-maxage=${CDN_CACHE_DURATION}`
           });
 
-          readStream.pipe(response);
+        readStream.pipe(response);
       });
 
     });
   }
 
   function sendErrorResponse(error) {
+    if (response.headersSent) {
+      return response;
+    }
+
     let code = 500;
     let message = `General error. Please try again later.
       If the error persists, please create an issue in the
@@ -111,6 +112,11 @@ function sendStoredFile(request, response) {
     return getContent(getFilesOptions).then(() => {
       let contentList = '';
 
+      if (path === '/') {
+        // Let the latest versions appear first
+        directoryList.reverse();
+      }
+
       directoryList.forEach(directoryPath => {
         const dirName = directoryPath.split('/').reverse()[1];
         contentList += `<a href="${dirName}/">${dirName}/</a><br>`;
@@ -125,11 +131,20 @@ function sendStoredFile(request, response) {
       // without trailing slash
       const base = request.originalUrl.endsWith('/') ? request.originalUrl : request.originalUrl + '/';
 
-      let directoryListing = `
-        <base href="${base}">
-        <h1>Index of ${path}</h1>
-        <hr>
-        <pre>${contentList}</pre>`;
+      const directoryListing = `
+        <!DOCTYPE html>
+        <html lang="en">
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <base href="${base}">
+          </head>
+          <body>
+            <h1>Index of ${path}</h1>
+            <hr>
+            <pre>${contentList}</pre>
+          </body>
+        </html>`;
 
       return response
         .status(200)
@@ -145,7 +160,11 @@ function sendStoredFile(request, response) {
         const nextQuery = data[1];
         const apiResponse = data[2];
 
-        if (!files.length && (!apiResponse || !apiResponse.prefixes)) {
+        if (
+          // we got no files or directories from previous query pages
+          !fileList.length && !directoryList.length &&
+          // this query page has no file or directories
+          !files.length && (!apiResponse || !apiResponse.prefixes)) {
           return Promise.reject({
             code: 404
           });
@@ -169,38 +188,45 @@ function sendStoredFile(request, response) {
   }
 }
 
-function deleteOldSnapshotZip(event) {
-  const object = event.data;
+const snapshotRegex = /^snapshot(-stable)?\//;
 
+/**
+ * The build folder contains a zip file that is unique per build.
+ * When a new zip file is uploaded into snapshot or snapshot-stable,
+ * delete the previous zip file.
+ */
+function deleteOldSnapshotZip(object, context) {
   const bucketId = object.bucket;
   const filePath = object.name;
   const contentType = object.contentType;
 
   const bucket = gcs.bucket(bucketId);
 
-  if (event.eventType === 'providers/cloud.storage/eventTypes/object.change' &&
-      contentType === 'application/zip' &&
-      filePath.startsWith('snapshot/')
-    ) {
+  const snapshotFolderMatch = filePath.match(snapshotRegex);
 
-    bucket.getFiles({
-      prefix: 'snapshot/',
-      delimiter: '/',
-      autoPaginate: false
-    }).then(function(data) {
-      const files = data[0];
-
-      const oldZipFiles = files.filter(file => {
-        return file.metadata.name !== filePath && file.metadata.contentType === 'application/zip';
-      });
-
-      oldZipFiles.forEach(function(file) {
-        file.delete();
-      });
-
-    });
+  if (!snapshotFolderMatch ||	contentType !== 'application/zip') {
+    return;
   }
+
+  bucket.getFiles({
+    prefix: snapshotFolderMatch[0],
+    delimiter: '/',
+    autoPaginate: false
+  }).then(function(data) {
+    const files = data[0];
+
+    const oldZipFiles = files.filter(file => {
+      return file.metadata.name !== filePath && file.metadata.contentType === 'application/zip';
+    });
+
+    console.info(`found ${oldZipFiles.length} old zip files to delete`);
+
+    oldZipFiles.forEach(function(file) {
+      file.delete();
+    });
+
+  });
 }
 
 exports.sendStoredFile = functions.https.onRequest(sendStoredFile);
-exports.deleteOldSnapshotZip = functions.storage.object().onChange(deleteOldSnapshotZip);
+exports.deleteOldSnapshotZip = functions.storage.object().onFinalize(deleteOldSnapshotZip);

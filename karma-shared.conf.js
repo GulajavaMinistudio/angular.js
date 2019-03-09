@@ -10,7 +10,7 @@ module.exports = function(config, specificOptions) {
     browserDisconnectTimeout: 10000,
     browserDisconnectTolerance: 2,
     browserNoActivityTimeout: 30000,
-    reporters: ['spec'],
+    reporters: ['dots'],
     specReporter: {
       maxLogLines: 5,             // limit number of lines logged per test
       suppressErrorSummary: true, // do not print error summary
@@ -23,12 +23,7 @@ module.exports = function(config, specificOptions) {
     // SauceLabs config for local development.
     sauceLabs: {
       testName: specificOptions.testName || 'AngularJS',
-      startConnect: true,
-      options: {
-        // We need selenium version +2.46 for Firefox 39 and the last selenium version for OS X is 2.45.
-        // TODO: Uncomment when there is a selenium 2.46 available for OS X.
-        // 'selenium-version': '2.46.0'
-      }
+      startConnect: true
     },
 
     // BrowserStack config for local development.
@@ -45,24 +40,32 @@ module.exports = function(config, specificOptions) {
       'SL_Chrome': {
         base: 'SauceLabs',
         browserName: 'chrome',
-        version: '59'
+        version: 'latest'
+      },
+      'SL_Chrome-1': {
+        base: 'SauceLabs',
+        browserName: 'chrome',
+        version: 'latest-1'
       },
       'SL_Firefox': {
         base: 'SauceLabs',
         browserName: 'firefox',
-        version: '54'
+        version: 'latest'
       },
-      'SL_Safari_8': {
+      'SL_Firefox-1': {
+        base: 'SauceLabs',
+        browserName: 'firefox',
+        version: 'latest-1'
+      },
+      'SL_Safari-1': {
         base: 'SauceLabs',
         browserName: 'safari',
-        platform: 'OS X 10.10',
-        version: '8'
+        version: 'latest-1'
       },
-      'SL_Safari_9': {
+      'SL_Safari': {
         base: 'SauceLabs',
         browserName: 'safari',
-        platform: 'OS X 10.11',
-        version: '9'
+        version: 'latest'
       },
       'SL_IE_9': {
         base: 'SauceLabs',
@@ -86,13 +89,23 @@ module.exports = function(config, specificOptions) {
         base: 'SauceLabs',
         browserName: 'microsoftedge',
         platform: 'Windows 10',
-        version: '14'
+        version: 'latest'
+      },
+      'SL_EDGE-1': {
+        base: 'SauceLabs',
+        browserName: 'microsoftedge',
+        platform: 'Windows 10',
+        version: 'latest-1'
       },
       'SL_iOS': {
         base: 'SauceLabs',
         browserName: 'iphone',
-        platform: 'OS X 10.10',
-        version: '8.1'
+        version: 'latest'
+      },
+      'SL_iOS-1': {
+        base: 'SauceLabs',
+        browserName: 'iphone',
+        version: 'latest-1'
       },
 
       'BS_Chrome': {
@@ -137,27 +150,20 @@ module.exports = function(config, specificOptions) {
       'BS_EDGE': {
         base: 'BrowserStack',
         browser: 'edge',
-        browser_version: '14',
         os: 'Windows',
         os_version: '10'
-      },
-      'BS_iOS_8': {
-        base: 'BrowserStack',
-        device: 'iPhone 6',
-        os: 'ios',
-        os_version: '8.3'
-      },
-      'BS_iOS_9': {
-        base: 'BrowserStack',
-        device: 'iPhone 6S',
-        os: 'ios',
-        os_version: '9.3'
       },
       'BS_iOS_10': {
         base: 'BrowserStack',
         device: 'iPhone 7',
         os: 'ios',
         os_version: '10.0'
+      },
+      'BS_iOS_11': {
+        base: 'BrowserStack',
+        device: 'iPhone 8',
+        os: 'ios',
+        os_version: '11.0'
       }
     }
   });
@@ -166,7 +172,6 @@ module.exports = function(config, specificOptions) {
   if (process.env.TRAVIS) {
     var buildLabel = 'TRAVIS #' + process.env.TRAVIS_BUILD_NUMBER + ' (' + process.env.TRAVIS_BUILD_ID + ')';
 
-    config.logLevel = config.LOG_DEBUG;
     // Karma (with socket.io 1.x) buffers by 50 and 50 tests can take a long time on IEs;-)
     config.browserNoActivityTimeout = 120000;
 
@@ -178,6 +183,9 @@ module.exports = function(config, specificOptions) {
     config.sauceLabs.startConnect = false;
     config.sauceLabs.tunnelIdentifier = process.env.TRAVIS_JOB_NUMBER;
     config.sauceLabs.recordScreenshots = true;
+
+    // Try 'websocket' for a faster transmission first. Fallback to 'polling' if necessary.
+    config.transports = ['websocket', 'polling'];
 
     // Debug logging into a file, that we print out at the end of the build.
     config.loggers.push({

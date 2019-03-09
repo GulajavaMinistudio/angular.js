@@ -21,8 +21,6 @@
 
   lowercase,
   uppercase,
-  manualLowercase,
-  manualUppercase,
   nodeName_,
   isArrayLike,
   forEach,
@@ -75,6 +73,7 @@
   fromJson,
   convertTimezoneToLocal,
   timezoneToOffset,
+  addDateMinutes,
   startingTag,
   tryDecodeURIComponent,
   parseKeyValue,
@@ -112,13 +111,11 @@
  * @installation
  * @description
  *
- * # ng (core module)
  * The ng module is loaded by default when an AngularJS application is started. The module itself
  * contains the essential components for an AngularJS application to function. The table below
  * lists a high level breakdown of each of the services/factories, filters, directives and testing
  * components available within this core module.
  *
- * <div doc-module-components="ng"></div>
  */
 
 var REGEX_STRING_REGEXP = /^\/(.+)\/([a-z]*)$/;
@@ -147,31 +144,6 @@ var lowercase = function(string) {return isString(string) ? string.toLowerCase()
  * @returns {string} Uppercased string.
  */
 var uppercase = function(string) {return isString(string) ? string.toUpperCase() : string;};
-
-
-var manualLowercase = function(s) {
-  /* eslint-disable no-bitwise */
-  return isString(s)
-      ? s.replace(/[A-Z]/g, function(ch) {return String.fromCharCode(ch.charCodeAt(0) | 32);})
-      : s;
-  /* eslint-enable */
-};
-var manualUppercase = function(s) {
-  /* eslint-disable no-bitwise */
-  return isString(s)
-      ? s.replace(/[a-z]/g, function(ch) {return String.fromCharCode(ch.charCodeAt(0) & ~32);})
-      : s;
-  /* eslint-enable */
-};
-
-
-// String#toLowerCase and String#toUpperCase don't produce correct results in browsers with Turkish
-// locale, for this reason we need to detect this case and redefine lowercase/uppercase methods
-// with correct but slower alternatives. See https://github.com/angular/angular.js/issues/11387
-if ('i' !== 'I'.toLowerCase()) {
-  lowercase = manualLowercase;
-  uppercase = manualUppercase;
-}
 
 
 var
@@ -221,8 +193,7 @@ function isArrayLike(obj) {
 
   // NodeList objects (with `item` method) and
   // other objects with suitable length characteristics are array-like
-  return isNumber(length) &&
-    (length >= 0 && ((length - 1) in obj || obj instanceof Array) || typeof obj.item === 'function');
+  return isNumber(length) && (length >= 0 && (length - 1) in obj || typeof obj.item === 'function');
 
 }
 
@@ -425,8 +396,8 @@ function extend(dst) {
 * sinceVersion="1.6.5"
 * This function is deprecated, but will not be removed in the 1.x lifecycle.
 * There are edge cases (see {@link angular.merge#known-issues known issues}) that are not
-* supported by this function. We suggest
-* using [lodash's merge()](https://lodash.com/docs/4.17.4#merge) instead.
+* supported by this function. We suggest using another, similar library for all-purpose merging,
+* such as [lodash's merge()](https://lodash.com/docs/4.17.4#merge).
 *
 * @knownIssue
 * This is a list of (known) object types that are not handled correctly by this function:
@@ -434,6 +405,8 @@ function extend(dst) {
 * - [`MediaStream`](https://developer.mozilla.org/docs/Web/API/MediaStream)
 * - [`CanvasGradient`](https://developer.mozilla.org/docs/Web/API/CanvasGradient)
 * - AngularJS {@link $rootScope.Scope scopes};
+*
+* `angular.merge` also does not support merging objects with circular references.
 *
 * @param {Object} dst Destination object.
 * @param {...Object} src Source object(s).
@@ -637,12 +610,14 @@ function isDate(value) {
  * @kind function
  *
  * @description
- * Determines if a reference is an `Array`. Alias of Array.isArray.
+ * Determines if a reference is an `Array`.
  *
  * @param {*} value Reference to check.
  * @returns {boolean} True if `value` is an `Array`.
  */
-var isArray = Array.isArray;
+function isArray(arr) {
+  return Array.isArray(arr) || arr instanceof Array;
+}
 
 /**
  * @description
@@ -810,7 +785,9 @@ function arrayRemove(array, value) {
  * @kind function
  *
  * @description
- * Creates a deep copy of `source`, which should be an object or an array.
+ * Creates a deep copy of `source`, which should be an object or an array. This functions is used
+ * internally, mostly in the change-detection code. It is not intended as an all-purpose copy
+ * function, and has several limitations (see below).
  *
  * * If no destination is supplied, a copy of the object or array is created.
  * * If a destination is provided, all of its elements (for arrays) or properties (for objects)
@@ -819,15 +796,35 @@ function arrayRemove(array, value) {
  * * If `source` is identical to `destination` an exception will be thrown.
  *
  * <br />
+ *
  * <div class="alert alert-warning">
  *   Only enumerable properties are taken into account. Non-enumerable properties (both on `source`
  *   and on `destination`) will be ignored.
  * </div>
  *
- * @param {*} source The source that will be used to make a copy.
- *                   Can be any type, including primitives, `null`, and `undefined`.
- * @param {(Object|Array)=} destination Destination into which the source is copied. If
- *     provided, must be of the same type as `source`.
+ * <div class="alert alert-warning">
+ *   `angular.copy` does not check if destination and source are of the same type. It's the
+ *   developer's responsibility to make sure they are compatible.
+ * </div>
+ *
+ * @knownIssue
+ * This is a non-exhaustive list of object types / features that are not handled correctly by
+ * `angular.copy`. Note that since this functions is used by the change detection code, this
+ * means binding or watching objects of these types (or that include these types) might not work
+ * correctly.
+ * - [`File`](https://developer.mozilla.org/docs/Web/API/File)
+ * - [`Map`](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Map)
+ * - [`ImageData`](https://developer.mozilla.org/docs/Web/API/ImageData)
+ * - [`MediaStream`](https://developer.mozilla.org/docs/Web/API/MediaStream)
+ * - [`Set`](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Set)
+ * - [`WeakMap`](https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/WeakMap)
+ * - ['getter'](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Functions/get)/
+ *   [`setter`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Functions/set)`
+ *
+ * @param {*} source The source that will be used to make a copy. Can be any type, including
+ *     primitives, `null`, and `undefined`.
+ * @param {(Object|Array)=} destination Destination into which the source is copied. If provided,
+ *     must be of the same type as `source`.
  * @returns {*} The copy or updated `destination`, if `destination` was specified.
  *
  * @example
@@ -843,7 +840,7 @@ function arrayRemove(array, value) {
           <button ng-click="update(user)">SAVE</button>
         </form>
         <pre>form = {{user | json}}</pre>
-        <pre>master = {{master | json}}</pre>
+        <pre>leader = {{leader | json}}</pre>
       </div>
     </file>
     <file name="script.js">
@@ -851,16 +848,16 @@ function arrayRemove(array, value) {
       angular.
         module('copyExample', []).
         controller('ExampleController', ['$scope', function($scope) {
-          $scope.master = {};
+          $scope.leader = {};
 
           $scope.reset = function() {
             // Example with 1 argument
-            $scope.user = angular.copy($scope.master);
+            $scope.user = angular.copy($scope.leader);
           };
 
           $scope.update = function(user) {
             // Example with 2 arguments
-            angular.copy(user, $scope.master);
+            angular.copy(user, $scope.leader);
           };
 
           $scope.reset();
@@ -1370,7 +1367,7 @@ function convertTimezoneToLocal(date, timezone, reverse) {
  */
 function startingTag(element) {
   element = jqLite(element).clone().empty();
-  var elemHtml = jqLite('<div>').append(element).html();
+  var elemHtml = jqLite('<div></div>').append(element).html();
   try {
     return element[0].nodeType === NODE_TYPE_TEXT ? lowercase(elemHtml) :
         elemHtml.
@@ -1596,6 +1593,10 @@ var isAutoBootstrapAllowed = allowAutoBootstrap(window.document);
  * document would not be compiled, the `AppController` would not be instantiated and the `{{ a+b }}`
  * would not be resolved to `3`.
  *
+ * @example
+ *
+ * ### Simple Usage
+ *
  * `ngApp` is the easiest, and most common way to bootstrap an application.
  *
  <example module="ngAppDemo" name="ng-app">
@@ -1611,6 +1612,10 @@ var isAutoBootstrapAllowed = allowAutoBootstrap(window.document);
    });
    </file>
  </example>
+ *
+ * @example
+ *
+ * ### With `ngStrictDi`
  *
  * Using `ngStrictDi`, you would see something like this:
  *
@@ -1917,24 +1922,24 @@ function bindJQuery() {
       injector: JQLitePrototype.injector,
       inheritedData: JQLitePrototype.inheritedData
     });
-
-    // All nodes removed from the DOM via various jQuery APIs like .remove()
-    // are passed through jQuery.cleanData. Monkey-patch this method to fire
-    // the $destroy event on all removed nodes.
-    originalCleanData = jQuery.cleanData;
-    jQuery.cleanData = function(elems) {
-      var events;
-      for (var i = 0, elem; (elem = elems[i]) != null; i++) {
-        events = jQuery._data(elem, 'events');
-        if (events && events.$destroy) {
-          jQuery(elem).triggerHandler('$destroy');
-        }
-      }
-      originalCleanData(elems);
-    };
   } else {
     jqLite = JQLite;
   }
+
+  // All nodes removed from the DOM via various jqLite/jQuery APIs like .remove()
+  // are passed through jqLite/jQuery.cleanData. Monkey-patch this method to fire
+  // the $destroy event on all removed nodes.
+  originalCleanData = jqLite.cleanData;
+  jqLite.cleanData = function(elems) {
+    var events;
+    for (var i = 0, elem; (elem = elems[i]) != null; i++) {
+      events = (jqLite._data(elem) || {}).events;
+      if (events && events.$destroy) {
+        jqLite(elem).triggerHandler('$destroy');
+      }
+    }
+    originalCleanData(elems);
+  };
 
   angular.element = jqLite;
 

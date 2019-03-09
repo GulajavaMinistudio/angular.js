@@ -1,3 +1,7 @@
+# AngularJS is in LTS mode
+We are no longer accepting changes that are not critical bug fixes into this project.
+See https://blog.angular.io/stable-angularjs-and-long-term-support-7e077635ee9c for more detail.
+
 <!--
 IF YOU DON'T FILL OUT THE FOLLOWING INFORMATION WE MIGHT CLOSE YOUR ISSUE WITHOUT INVESTIGATION
 -->
@@ -9,9 +13,10 @@ IF YOU DON'T FILL OUT THE FOLLOWING INFORMATION WE MIGHT CLOSE YOUR ISSUE WITHOU
 
 **I'm submitting a ...**
 <!-- (check one with "x") -->
-- [ ] bug report
-- [ ] feature request
-- [ ] other (Please do not submit support requests here (see above))
+- [ ] regression from 1.7.0
+- [ ] security issue
+- [ ] issue caused by a new browser version
+- [ ] other <!--(Please do not submit support requests here - see above)-->
 
 **Current behavior:**
 <!-- Describe how the bug manifests / how the current features are insufficient. -->
@@ -26,10 +31,11 @@ please provide the *STEPS TO REPRODUCE* and if possible a *MINIMAL DEMO* of the 
 https://plnkr.co or similar (you can use this template as a starting point: http://plnkr.co/edit/tpl:yBpEi4).
 -->
 
-**Angular version:** 1.x.y
-<!-- Check whether this is still an issue in the most recent stable or in the snapshot AngularJS version (https://code.angularjs.org/snapshot/) -->
+**AngularJS version:** 1.7.x
+<!-- Check whether this is still an issue in the most recent stable or in the snapshot AngularJS
+version (https://code.angularjs.org/snapshot/) -->
 
-**Browser:** [all | Chrome XX | Firefox XX | Edge XX | IE XX | Safari XX | Mobile Chrome XX | Android X.X Web Browser | iOS XX Safari | iOS XX UIWebView | iOS XX WKWebView ]
+**Browser:** [all | Chrome XX | Firefox XX | Edge XX | IE XX | Safari XX | Mobile Chrome XX | Android X.X Web Browser | iOS XX Safari | iOS XX UIWebView | iOS XX WKWebView | Opera XX ]
 <!-- All browsers where this could be reproduced (and Operating System if relevant) -->
 
 **Anything else:**
